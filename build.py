@@ -134,8 +134,8 @@ def preprocess(arch, source, include_defines=False): #,fake_sysroot=True):
 		"/usr/lib/x86_64-linux-gnu/glib-2.0/include",
 		f"target/{arch_to_generic(arch)}",
 		f"include/tcg/{arch}",
-		f"tcg/i386",
-		f"host/include/i386/",
+		f"tcg/x86_64",
+		f"host/include/x86_64/",
 		"include/tcg",
 		"contrib/plugins",
 		"include/qemu",
@@ -189,7 +189,7 @@ def compile_target(arch, target):
 
 	#include "qemu/plugin.h"
 	#include "qemu/plugin-event.h"
-	#include "qemu/qemu-plugin.h"
+	#include "plugins/qemu-plugin.h"
 	#include "plugins/plugin.h"
 	#include "panda/types.h"
 	#include "panda/callbacks/cb-defs.h"
