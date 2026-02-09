@@ -189,7 +189,7 @@ def compile_target(arch, target):
 
 	#include "qemu/plugin.h"
 	#include "qemu/plugin-event.h"
-	#include "qemu/qemu-plugin.h"
+	#include "plugins/qemu-plugin.h"
 	#include "plugins/plugin.h"
 	#include "panda/types.h"
 	#include "panda/callbacks/cb-defs.h"
