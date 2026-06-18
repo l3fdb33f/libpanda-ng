@@ -5,6 +5,7 @@ import re
 import tree_sitter_c as tsc
 from tree_sitter import Language, Parser
 import functools
+import os
 from glob import glob
 from pathlib import Path
 
@@ -51,8 +52,23 @@ def remove_functions(code):
 def gdb_resolve_issue(code):
 	cmd = code.decode(errors="ignore").replace('\n',' ')
 	print(f"cmd={cmd}")
-	cmd = cmd.replace("__fd_mask", "unsigned int")	
-	result = gdb.execute(f"p {cmd}",to_string=True).split(" = ")[1].strip()
+	cmd = cmd.replace("__fd_mask", "unsigned int")
+	try:
+		result = gdb.execute(f"p {cmd}",to_string=True).split(" = ")[1].strip()
+	except gdb.error:
+		# The expression references a type absent from libpanda DWARF (e.g. the
+		# host user_regs_struct on a host whose TCG backend does not reference it,
+		# as on arm64). Evaluate the constant via the host C compiler + system
+		# headers instead -> correct, host-arch value.
+		import subprocess
+		glib = subprocess.check_output(["pkg-config","--cflags-only-I","glib-2.0"]).decode().strip()
+		src = ("#include <stdio.h>\n#include <sys/procfs.h>\n#include <sys/user.h>\n"
+		       "#include \"includes/sys_includes.h\"\n"
+		       "int main(void){printf(\"%lld\",(long long)(" + cmd + "));return 0;}\n")
+		open("/tmp/eval.c","w").write(src)
+		subprocess.check_output("gcc /tmp/eval.c -o /tmp/eval.bin -I"+script_dir+" "+glib, shell=True)
+		result = subprocess.check_output(["/tmp/eval.bin"]).decode().strip()
+		print(f"  [cc-fallback] {cmd} = {result}")
 	return result.encode()
 	
 def simplify_brackets(code):
@@ -137,8 +153,8 @@ def preprocess(arch, source, include_defines=False): #,fake_sysroot=True):
 		"include",
 		f"target/{arch_to_generic(arch)}",
 		f"include/tcg/{arch}",
-		f"tcg/x86_64",
-		f"host/include/x86_64/",
+		f"tcg/{os.uname().machine}",
+		f"host/include/{os.uname().machine}/",
 		"include/tcg",
 		"contrib/plugins",
 		"include/qemu",
@@ -155,7 +171,8 @@ def preprocess(arch, source, include_defines=False): #,fake_sysroot=True):
 
 	defines = '-dD' if include_defines else ''
 
-	cmd = f"gcc -E {defines} -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -fPIC -UNDEBUG {includes} /tmp/simple.c -o /tmp/simple.out -m64 -Wall -Winvalid-pch -std=gnu11 -O2 -g -fstack-protector-strong -Wempty-body -Wendif-labels -Wexpansion-to-defined -Wformat-security -Wformat-y2k -Wignored-qualifiers -Wimplicit-fallthrough=2 -Winit-self -Wmissing-format-attribute -Wmissing-prototypes -Wnested-externs -Wold-style-declaration -Wold-style-definition -Wredundant-decls -Wshadow=local -Wstrict-prototypes -Wtype-limits -Wundef -Wvla -Wwrite-strings -Wno-missing-include-dirs -Wno-psabi -Wno-shift-negative-value"
+	m64flag = "-m64" if os.uname().machine == "x86_64" else ""
+	cmd = f"gcc -E {defines} -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -fPIC -UNDEBUG {includes} /tmp/simple.c -o /tmp/simple.out {m64flag} -Wall -Winvalid-pch -std=gnu11 -O2 -g -fstack-protector-strong -Wempty-body -Wendif-labels -Wexpansion-to-defined -Wformat-security -Wformat-y2k -Wignored-qualifiers -Wimplicit-fallthrough=2 -Winit-self -Wmissing-format-attribute -Wmissing-prototypes -Wnested-externs -Wold-style-declaration -Wold-style-definition -Wredundant-decls -Wshadow=local -Wstrict-prototypes -Wtype-limits -Wundef -Wvla -Wwrite-strings -Wno-missing-include-dirs -Wno-psabi -Wno-shift-negative-value"
 	print(cmd)
 	check_output(cmd, shell=True)
 	
